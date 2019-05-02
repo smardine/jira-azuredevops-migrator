@@ -3,10 +3,10 @@ using Microsoft.Extensions.CommandLineUtils;
 using Microsoft.TeamFoundation.WorkItemTracking.Client;
 using Migration.Common;
 using Migration.Common.Config;
+using Migration.Common.Log;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
-using Migration.Common.Log;
 using System.Linq;
 
 namespace WorkItemImport
@@ -42,15 +42,15 @@ namespace WorkItemImport
             CommandOption tokenOption = commandLineApplication.Option("--token <accesstoken>", "Personal access token to use for authentication", CommandOptionType.SingleValue);
             CommandOption urlOption = commandLineApplication.Option("--url <accounturl>", "Url for the account", CommandOptionType.SingleValue);
             CommandOption configOption = commandLineApplication.Option("--config <configurationfilename>", "Import the work items based on the configuration file", CommandOptionType.SingleValue);
-            CommandOption forceOption = commandLineApplication.Option("--force", "Forces execution from start (instead of continuing from previous run)", CommandOptionType.NoValue);
-
+            CommandOption forceOption = commandLineApplication.Option("--force", "Forces execution from start (instead of continuing from previous run)", CommandOptionType.NoValue);           
+            CommandOption useWindowsAuth = commandLineApplication.Option("--useWindowsAuth", "mot de passe ", CommandOptionType.NoValue);
             commandLineApplication.OnExecute(() =>
             {
                 bool forceFresh = forceOption.HasValue();
 
                 if (configOption.HasValue())
                 {
-                    ExecuteMigration(tokenOption, urlOption, configOption, forceFresh);
+                    ExecuteMigration(tokenOption, urlOption, configOption, forceFresh, useWindowsAuth);
                 }
                 else
                 {
@@ -61,7 +61,7 @@ namespace WorkItemImport
             });
         }
 
-        private void ExecuteMigration(CommandOption token, CommandOption url, CommandOption configFile, bool forceFresh)
+        private void ExecuteMigration(CommandOption token, CommandOption url, CommandOption configFile, bool forceFresh, CommandOption useWindowsAuth)
         {
             ConfigJson config = null;
             var itemCount = 0;
@@ -77,16 +77,27 @@ namespace WorkItemImport
                 config = configReaderJson.Deserialize();
 
                 var context = MigrationContext.Init("wi-import", config.Workspace, config.LogLevel, forceFresh);
-
                 // connection settings for Azure DevOps/TFS:
                 // full base url incl https, name of the project where the items will be migrated (if it doesn't exist on destination it will be created), personal access token
-                var settings = new Settings(url.Value(), config.TargetProject, token.Value())
+
+                Settings settings = new Settings(url.Value(), config.TargetProject, token.Value())
                 {
                     BaseAreaPath = config.BaseAreaPath ?? string.Empty, // Root area path that will prefix area path of each migrated item
                     BaseIterationPath = config.BaseIterationPath ?? string.Empty, // Root iteration path that will prefix each iteration
                     IgnoreFailedLinks = config.IgnoreFailedLinks,
                     ProcessTemplate = config.ProcessTemplate
                 };
+                if (useWindowsAuth != null && useWindowsAuth.Values.Count > 0)
+                {
+                    settings = new Settings(url.Value(), config.TargetProject, useWindowsAuth: true)
+                    {
+                        BaseAreaPath = config.BaseAreaPath ?? string.Empty, // Root area path that will prefix area path of each migrated item
+                        BaseIterationPath = config.BaseIterationPath ?? string.Empty, // Root iteration path that will prefix each iteration
+                        IgnoreFailedLinks = config.IgnoreFailedLinks,
+                        ProcessTemplate = config.ProcessTemplate
+                    };
+                }
+
 
                 // initialize Azure DevOps/TFS connection. Creates/fetches project, fills area and iteration caches.
                 var agent = Agent.Initialize(context, settings);
@@ -112,14 +123,14 @@ namespace WorkItemImport
                         if (!forceFresh && context.Journal.IsItemMigrated(executionItem.OriginId, executionItem.Revision.Index))
                             continue;
 
-                        WorkItem wi = null;
+                       WorkItem wi = null;
 
                         if (executionItem.WiId > 0)
                             wi = agent.GetWorkItem(executionItem.WiId);
                         else
                             wi = agent.CreateWI(executionItem.WiType);
 
-                        Logger.Log(LogLevel.Info, $"Processing {importedItems + 1}/{revisionCount} - wi '{wi.Id}', jira '{executionItem.OriginId}, rev {executionItem.Revision.Index}'.");
+                         Logger.Log(LogLevel.Info, $"Processing {importedItems + 1}/{revisionCount} - wi '{wi.Id}', jira '{executionItem.OriginId}, rev {executionItem.Revision.Index}'.");
 
                         agent.ImportRevision(executionItem.Revision, wi);
                         importedItems++;
@@ -166,7 +177,7 @@ namespace WorkItemImport
 
             Logger.Log(LogLevel.Info, $"Import started. Importing {itemsCount} items with {revisionCount} revisions.");
 
-            Logger.StartSession("Azure DevOps Work Item Import", 
+            Logger.StartSession("Azure DevOps Work Item Import",
                 "wi-import-started",
                 new Dictionary<string, string>() {
                     { "Tool version         :", toolVersion },
@@ -194,7 +205,7 @@ namespace WorkItemImport
         private static string GetHostingType(Agent agent)
         {
             var uri = new Uri(agent.Settings.Account);
-            switch(uri.Host.ToLower())
+            switch (uri.Host.ToLower())
             {
                 case "dev.azure.com":
                 case "visualstudio.com":

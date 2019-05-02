@@ -9,9 +9,18 @@
             Pat = pat;
         }
 
+        public Settings(string account, string project, bool useWindowsAuth)
+        {
+            Account = account;
+            Project = project;
+            UseWindowsAuth = useWindowsAuth;
+            
+        }
+
         public string Account { get; private set; }
-        public string Project { get; private set; }        
+        public string Project { get; private set; }
         public string Pat { get; private set; }
+       public bool UseWindowsAuth { get; private set; }
         public string BaseAreaPath { get; internal set; }
         public string BaseIterationPath { get; internal set; }
         public bool IgnoreFailedLinks { get; internal set; }

@@ -127,9 +127,20 @@ namespace WorkItemImport
             try
             {
                 Logger.Log(LogLevel.Info, "Connecting to Azure DevOps/TFS...");
-                var credentials = new VssBasicCredential("", settings.Pat);
-                var uri = new Uri(settings.Account);
-                return new VsWebApi.VssConnection(uri, credentials);
+                if (!string.IsNullOrEmpty(settings.Pat))
+                {
+                    var credentials = new VssBasicCredential("", settings.Pat);
+                    var uri = new Uri(settings.Account);
+                    return new VsWebApi.VssConnection(uri, credentials);
+                }
+                else
+                {
+                    Microsoft.VisualStudio.Services.Common.WindowsCredential windowsCredential = new Microsoft.VisualStudio.Services.Common.WindowsCredential(useDefaultCredentials: true);
+                    VssCredentials credentials = new VssCredentials(windowsCredential);                    
+                    var uri = new Uri(settings.Account);
+                    return new VsWebApi.VssConnection(uri, credentials);
+                }
+                
             }
             catch (Exception ex)
             {
@@ -140,12 +151,24 @@ namespace WorkItemImport
 
         private static TfsTeamProjectCollection EstablishSoapConnection(Settings settings)
         {
-            NetworkCredential netCred = new NetworkCredential(string.Empty, settings.Pat);
-            VssBasicCredential basicCred = new VssBasicCredential(netCred);
-            VssCredentials tfsCred = new VssCredentials(basicCred);
-            var collection = new TfsTeamProjectCollection(new Uri(settings.Account), tfsCred);
-            collection.Authenticate();
-            return collection;
+            if (!string.IsNullOrEmpty(settings.Pat))
+            {
+                NetworkCredential netCred = new NetworkCredential(string.Empty, settings.Pat);
+                VssBasicCredential basicCred = new VssBasicCredential(netCred);              
+                VssCredentials tfsCred = new VssCredentials(basicCred);
+                var collection = new TfsTeamProjectCollection(new Uri(settings.Account), tfsCred);
+                collection.Authenticate();
+                return collection;
+            }
+            else
+            {
+                Microsoft.VisualStudio.Services.Common.WindowsCredential windowsCredential = new Microsoft.VisualStudio.Services.Common.WindowsCredential(useDefaultCredentials: true);
+                VssCredentials tfsCred = new VssCredentials(windowsCredential);
+                var collection = new TfsTeamProjectCollection(new Uri(settings.Account), tfsCred);
+                collection.Authenticate();
+                return collection;
+            }
+              
         }
 
         #endregion
@@ -602,6 +625,10 @@ namespace WorkItemImport
 
         private WorkItemLinkTypeEnd ParseLinkEnd(WiLink link, WorkItem wi)
         {
+            if (link==null || string.IsNullOrEmpty(link.WiType))
+            {
+                return null;
+            }
             var props = link.WiType.Split('-');
             var linkType = wi.Project.Store.WorkItemLinkTypes.SingleOrDefault(lt => lt.ReferenceName == props[0]);
             if (linkType == null)
@@ -641,6 +668,8 @@ namespace WorkItemImport
         {
             if (!newWorkItem.IsValid())
             {
+                Logger.Log(LogLevel.Error, $"'{rev.ToString()}' - Invalid revision");
+
                 var reasons = newWorkItem.Validate();
                 foreach (Microsoft.TeamFoundation.WorkItemTracking.Client.Field reason in reasons)
                     Logger.Log(LogLevel.Info, $"Field: '{reason.Name}', Status: '{reason.Status}', Value: '{reason.Value}'");

@@ -99,8 +99,17 @@ namespace JiraExport
 
                 // Get the custom field names for epic link field and sprint field
                 jiraSettings.EpicLinkField = jiraProvider.GetCustomId(config.EpicLinkField);
+                if (string.IsNullOrEmpty(jiraSettings.EpicLinkField))
+                {
+                    Logger.Log(LogLevel.Warning, $"No match found for link type Epic with the name \"{config.EpicLinkField}\" in the config file :{configFileName}");
+                }
                 jiraSettings.SprintField = jiraProvider.GetCustomId(config.SprintField);
 
+                if (string.IsNullOrEmpty(jiraSettings.SprintField))
+                {
+                   
+                    Logger.Log(LogLevel.Warning, $"No match found for link type \"Sprint\" with the name \"{config.SprintField}\" in the config file :{configFileName}");
+                }
                 var mapper = new JiraMapper(jiraProvider, config);
                 var localProvider = new WiItemProvider(migrationWorkspace);
                 var exportedKeys = new HashSet<string>(Directory.EnumerateFiles(migrationWorkspace, "*.json").Select(f => Path.GetFileNameWithoutExtension(f)));
@@ -118,6 +127,8 @@ namespace JiraExport
                         Logger.Log(LogLevel.Debug, $"Exported as type '{wiItem.Type}'.");
                     }
                 }
+
+                Logger.Log(LogLevel.Info, "Fin du traitement de " + exportedItemsCount + " issues Jira");
             }
             catch (CommandParsingException e)
             {

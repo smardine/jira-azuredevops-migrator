@@ -98,48 +98,54 @@ namespace JiraExport
             }
         }
 
-        private async Task<JiraAttachment> DownloadAttachmentAsync(JiraAttachment att, WebClientWrapper web)
+        private async Task<JiraAttachment> DownloadAttachmentAsync(JiraAttachment initialAtt, WebClientWrapper web)
         {
-            if (att != null)
+            JiraAttachment jiraAttachment = initialAtt;
+            if (initialAtt != null)
             {
                 try
                 {
-                    if (string.IsNullOrWhiteSpace(att.Url))
-                        att = await GetAttachmentInfo(att.Id);
+                   
+                    if (string.IsNullOrWhiteSpace(initialAtt.Url))
+                       jiraAttachment = await GetAttachmentInfo(initialAtt.Id);
 
-                    if (!string.IsNullOrWhiteSpace(att.Url))
+                    if (jiraAttachment!=null && !string.IsNullOrWhiteSpace(jiraAttachment.Url))
                     {
-                        string path = Path.Combine(Settings.AttachmentsDir, att.Id, att.Filename);
+                        string path = Path.Combine(Settings.AttachmentsDir, jiraAttachment.Id, jiraAttachment.Filename);
                         EnsurePath(path);
-                        await web.DownloadWithAuthenticationAsync(att.Url, path);
-                        att.LocalPath = path;
-                        Logger.Log(LogLevel.Debug, $"Downloaded attachment '{att.ToString()}'");
+                        await web.DownloadWithAuthenticationAsync(jiraAttachment.Url, path);
+                        jiraAttachment.LocalPath = path;
+                        Logger.Log(LogLevel.Debug, $"Downloaded attachment '{jiraAttachment.ToString()}'");
                     }
                 }
                 catch (Exception ex)
                 {
-                    Logger.Log(ex, $"Attachment download failed for '{att.Id}'. ");
+                    Logger.Log(ex, $"Attachment download failed for '{initialAtt.Id}'. ");
+                }
+                try
+                {
+                    if (jiraAttachment!=null && !string.IsNullOrWhiteSpace(jiraAttachment.ThumbUrl))
+                    {
+                        
+                            string thumbname = Path.GetFileNameWithoutExtension(jiraAttachment.Filename) + ".thumb" + Path.GetExtension(jiraAttachment.Filename);
+                            var thumbPath = Path.Combine(Settings.AttachmentsDir, jiraAttachment.Id, thumbname);
+                            EnsurePath(thumbPath);
+                            await web.DownloadWithAuthenticationAsync(jiraAttachment.ThumbUrl, Path.Combine(Settings.AttachmentsDir, jiraAttachment.Id, thumbname));
+                            jiraAttachment.LocalThumbPath = thumbPath;
+                            Logger.Log(LogLevel.Debug, $"Downloaded attachment thumbnail '{jiraAttachment.ToString()}'.");
+                        
+                    }
+                }
+                catch (Exception e)
+                {
+
+                    Logger.Log(e, $"Attachment thumbnail '{initialAtt.ToString()}' download failed.");
                 }
 
-                if (!string.IsNullOrWhiteSpace(att.ThumbUrl))
-                {
-                    try
-                    {
-                        string thumbname = Path.GetFileNameWithoutExtension(att.Filename) + ".thumb" + Path.GetExtension(att.Filename);
-                        var thumbPath = Path.Combine(Settings.AttachmentsDir, att.Id, thumbname);
-                        EnsurePath(thumbPath);
-                        await web.DownloadWithAuthenticationAsync(att.ThumbUrl, Path.Combine(Settings.AttachmentsDir, att.Id, thumbname));
-                        att.LocalThumbPath = thumbPath;
-                        Logger.Log(LogLevel.Debug, $"Downloaded attachment thumbnail '{att.ToString()}'.");
-                    }
-                    catch (Exception ex)
-                    {
-                        Logger.Log(ex, $"Attachment thumbnail '{att.ToString()}' download failed.");
-                    }
-                }
+               
             }
 
-            return att;
+            return jiraAttachment;
         }
 
         private void EnsurePath(string path)
@@ -321,6 +327,7 @@ namespace JiraExport
             foreach (var item in response)
             {
                 var nameField = (JValue)item.SelectToken("name");
+                //Logger.Log(LogLevel.Debug, "name field: " + nameField);
                 if (nameField.Value.ToString().ToLower() == propertyName.ToLower())
                 {
                     var idField = (JValue)item.SelectToken("id");
